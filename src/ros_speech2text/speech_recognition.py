@@ -11,10 +11,7 @@ import wave
 import pyaudio
 # in order to use the enable_automatic_punctuation, use the beta import
 # seems to be ever so slightly worse at correctly recognizing speech than the non beta version
-from google.cloud import speech_v1p1beta1 as speech
-from google.cloud.speech_v1p1beta1 import enums
-from google.cloud.speech_v1p1beta1 import types
-# from google.cloud import speech as speech
+from google.cloud import speech
 # from google.cloud.speech import enums
 # from google.cloud.speech import types
 from google.gax.errors import RetryError
@@ -23,7 +20,8 @@ from google.gax.errors import RetryError
 
 import rospy
 from std_msgs.msg import String, Header
-from ros_speech2text.msg import transcript, event, start_utterance
+from ros_speech2text.msg import transcript, event
+from ros_speech2text.msg import startUtterance as start_utterance
 
 from .speech_detection import SpeechDetector
 
@@ -52,7 +50,7 @@ class SpeechRecognizer(object):
         self.node_name = rospy.get_name()
         self.pid = rospy.get_param(self.node_name + '/pid', -1)
         self._init_history_directory()
-        self.print_level = rospy.get_param(self.node_name + '/print_level', 0)
+        self.print_level = rospy.get_param(self.node_name + '/print_level', 3)
         # ROS message for the speech transcript
         self.pub_transcript = rospy.Publisher(
             self.TOPIC_BASE + '/transcript', transcript, queue_size=10)
@@ -64,7 +62,7 @@ class SpeechRecognizer(object):
         self.pub_event = rospy.Publisher(
             self.TOPIC_BASE + '/log', event, queue_size=10)
         self.sample_rate = rospy.get_param(self.node_name + '/audio_rate', 16000)
-        self.async = rospy.get_param(self.node_name + '/async_mode', False)
+        self._async = rospy.get_param(self.node_name + '/async_mode', False)
         dynamic_thresholding = rospy.get_param(
             self.node_name + '/enable_dynamic_threshold', False)
         if not dynamic_thresholding:
@@ -141,8 +139,8 @@ class SpeechRecognizer(object):
         self.sample_width = self.pa_handler.get_sample_size(FORMAT)
 
     def _init_csv(self):
-        self.csv_file = open(os.path.join(self.history_dir, 'transcript'), 'wb')
-        self.csv_writer = csv.writer(self.csv_file, delimiter=' ',)
+        self.csv_file = open(os.path.join(self.history_dir, 'transcript'), 'w')
+        self.csv_writer = csv.writer(self.csv_file, delimiter=' ')
         self.csv_writer.writerow(['utterance_id', 'start', 'end', 'duration', 'transcript', 'confidence'])
 
     def run(self):
@@ -305,16 +303,16 @@ class SpeechRecognizer(object):
         with io.open(path, 'rb') as audio_file:
             content = audio_file.read()
 
-        audio = types.RecognitionAudio(content=content)
-        config = types.RecognitionConfig(
+        audio = speech.RecognitionAudio(content=content)
+        config = speech.RecognitionConfig(
             encoding='LINEAR16',
             # make sure the sampling rate specified in the microphone node
             sample_rate_hertz=self.sample_rate,
             language_code='en-US',
             # the automatic punctuation is only available for the beta version
-            enable_automatic_punctuation=True)
+            enable_automatic_punctuation=False)
 
-        if self.async:
+        if self._async:
             try:
                operation = self.speech_client.long_running_recognize(config, audio)
                op_result = operation.result()

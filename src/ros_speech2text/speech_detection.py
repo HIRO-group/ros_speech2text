@@ -220,7 +220,7 @@ class SpeechDetector:
             previously = self.in_utterance
 
             if rospy.is_shutdown():
-                return None, None, None
+                return None, None, None, None
 
             snd_data = np.frombuffer(
                 stream.read(self.chunk_size, exception_on_overflow=False),
