@@ -5,23 +5,19 @@ import shutil
 from datetime import datetime
 from struct import pack
 from threading import Thread
-import time
+import time, sys
 
 import wave
 import pyaudio
-# in order to use the enable_automatic_punctuation, use the beta import
-# seems to be ever so slightly worse at correctly recognizing speech than the non beta version
+
 from google.cloud import speech
-# from google.cloud.speech import enums
-# from google.cloud.speech import types
 from google.gax.errors import RetryError
 
 
 
 import rospy
 from std_msgs.msg import String, Header
-from ros_speech2text.msg import transcript, event
-from ros_speech2text.msg import startUtterance as start_utterance
+from ros_speech2text.msg import Transcript, Event, StartUtterance
 
 from .speech_detection import SpeechDetector
 
@@ -53,14 +49,14 @@ class SpeechRecognizer(object):
         self.print_level = rospy.get_param(self.node_name + '/print_level', 3)
         # ROS message for the speech transcript
         self.pub_transcript = rospy.Publisher(
-            self.TOPIC_BASE + '/transcript', transcript, queue_size=10)
+            self.TOPIC_BASE + '/transcript', Transcript, queue_size=10)
         # ROS message for speech utterance started
         self.pub_start = rospy.Publisher(
-            self.TOPIC_BASE + '/start_utterance', start_utterance, queue_size=10)
+            self.TOPIC_BASE + '/start_utterance', StartUtterance, queue_size=10)
         self.pub_text = rospy.Publisher(
             self.TOPIC_BASE + '/text', String, queue_size=10)
         self.pub_event = rospy.Publisher(
-            self.TOPIC_BASE + '/log', event, queue_size=10)
+            self.TOPIC_BASE + '/log', Event, queue_size=10)
         self.sample_rate = rospy.get_param(self.node_name + '/audio_rate', 16000)
         self._async = rospy.get_param(self.node_name + '/async_mode', False)
         dynamic_thresholding = rospy.get_param(
@@ -215,13 +211,13 @@ class SpeechRecognizer(object):
         if self.print_level > 1:
             rospy.loginfo('Utterance started')
         self.pub_event.publish(
-            self.get_event_base_message(event.STARTED, utterance_id))
+            self.get_event_base_message(Event.STARTED, utterance_id))
 
     def utterance_end(self, utterance_id):
         if self.print_level > 1:
             rospy.loginfo('Utterance completed')
         self.pub_event.publish(
-            self.get_event_base_message(event.STOPPED, utterance_id))
+            self.get_event_base_message(Event.STOPPED, utterance_id))
 
     def get_utterance_start_end_callbacks(self, utterance_id):
         def start(): #The streaming_recognize() method converts speech data to possible text alternatives on the fly.
@@ -236,7 +232,7 @@ class SpeechRecognizer(object):
                           start_time, end_time):
         transcript_msg = self.get_transcript_message(transcription, confidence,
                                                      start_time, end_time)
-        event_msg = self.get_event_base_message(event.DECODED, utterance_id)
+        event_msg = self.get_event_base_message(Event.DECODED, utterance_id)
         event_msg.transcript = transcript_msg
         if self.print_level > 0:
             rospy.loginfo("(pid {}) {} [confidence: {}]".format(self.pid, transcription, confidence))
@@ -256,7 +252,7 @@ class SpeechRecognizer(object):
 
     def get_transcript_message(self, transcription, confidence, start_time,
                                end_time):
-        msg = transcript()
+        msg = Transcript()
         msg.start_time = start_time
         msg.end_time = end_time
         msg.speech_duration = end_time - start_time
@@ -267,12 +263,12 @@ class SpeechRecognizer(object):
         return msg
 
     def get_start_utterance(self):
-        msg = start_utterance()
+        msg = StartUtterance()
         msg.pid = self.pid
         return msg
 
     def get_event_base_message(self, evt, utterance_id):
-        msg = event()
+        msg = Event()
         msg.header = Header()
         msg.header.stamp = rospy.Time.now()
         msg.event = evt
@@ -314,7 +310,7 @@ class SpeechRecognizer(object):
 
         if self._async:
             try:
-               operation = self.speech_client.long_running_recognize(config, audio)
+               operation = self.speech_client.long_running_recognize(config=config, audio=audio)
                op_result = operation.result()
                for result in op_result.results:
                     for alternative in result.alternatives:
@@ -324,7 +320,7 @@ class SpeechRecognizer(object):
                 rospy.logerr("Error in asynchronous recognition: {}".format(e))
         else:
             try:
-                response = self.speech_client.recognize(config, audio)
+                response = self.speech_client.recognize(config=config, audio=audio)
                 if response.results is not None:
                     for result in response.results:
                         if result.alternatives[0].transcript is not None:
