@@ -25,7 +25,7 @@ from .speech_detection import SpeechDetector
 FORMAT = pyaudio.paInt16
 
 def list_audio_devices(pyaudio_handler):
-    device_list = [pyaudio_handler.get_device_info_by_index(i)['name']
+    device_list = [str(i) + " " + pyaudio_handler.get_device_info_by_index(i)['name']
                    for i in range(pyaudio_handler.get_device_count())]
     rospy.logdebug('Available devices:' + ''.join(
         ['\n  - [%d]: %s' % d for d in enumerate(device_list)]))
